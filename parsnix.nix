@@ -6,20 +6,18 @@ rec {
     charAt = str: idx: builtins.substring idx 1 str;
     strlen = builtins.stringLength;
     substringUntilEnd = str: from: builtins.substring from (strlen str - from) str;
-    isNumber =
-      c:
-      builtins.elem c [
-        "1"
-        "2"
-        "3"
-        "4"
-        "5"
-        "6"
-        "7"
-        "8"
-        "9"
-        "0"
-      ];
+    inAsciiRange =
+      start: end: c:
+      let
+        ascii = pkgs.lib.strings.charToInt c;
+      in
+      ascii >= start && ascii <= end;
+
+    isNumber = c: inAsciiRange 48 57 c;
+    isSmallLetter = c: inAsciiRange 97 122 c;
+    isCapitalLetter = c: inAsciiRange 65 90 c;
+    isLetter = c: isSmallLetter c || isCapitalLetter c;
+    isAlphaNumeric = c: isLetter c || isNumber c;
 
     mapIfOk = parsed: fun: if parsed ? results then (fun parsed) else parsed;
     nameSingleResult =
@@ -145,6 +143,11 @@ rec {
     separated1 =
       a: separator: str:
       seq a (many (seq separator a)) str;
+
+    alphanumeric = str: takeWhile (c: utils.isAlphaNumeric c) str;
+    alphanumeric1 = str: takeWhile1 (c: utils.isAlphaNumeric c) str;
+    numeric = str: takeWhile (c: utils.isNumber c) str;
+    numeric1 = str: takeWhile1 (c: utils.isNumber c) str;
   };
 
   demo = with (parsers // utils); {
@@ -174,11 +177,7 @@ rec {
           ":"
           "/"
         ]))
-        (opt (
-          map1 (x: [ { port = pkgs.lib.toIntBase10 x; } ]) (
-            seq (silent (tag ":")) (takeWhile (c: utils.isNumber c))
-          )
-        ))
+        (opt (map1 (x: [ { port = builtins.fromJSON x; } ]) (seq (silent (tag ":")) numeric)))
         (opt (
           nameSingleResult "path" (takeWhileNoneOf [
             "?"
