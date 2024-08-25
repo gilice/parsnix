@@ -74,7 +74,8 @@ rec {
     takeWhileNoneOf1 = list: str: takeWhile1 (c: !builtins.elem c list) str;
     takeUntil = char: str: takeWhile (c1: c1 != char) str;
     takeUntil1 = char: str: takeWhile1 (c1: c1 != char) str;
-
+    # like takeUntil, but consumes the character itself too as a silent
+    takeUntil1C = char: str: seq (takeUntil1 char) (silent (tag char)) str;
     seq =
       a: b: str:
       utils.mapIfOk (a str) (
@@ -146,46 +147,44 @@ rec {
       seq a (many (seq separator a)) str;
   };
 
-  demo = with parsers; {
+  demo = with (parsers // utils); {
     url = "https://example.com";
     urlUserPort = "https://someone@example.com:80";
-    url3 = "https://someone:password@subdomain.example.com:80/a/b?k1=v1&k2=v2";
+    url3 = "https://someone:password@subdomain.example.com:80/a/b?k1=v1&k2=v2#fragment";
     parseUrl =
       str:
       mergeResults (seqAll [
-        (nameSingleResult "protocol" (alt (tag "https") (tag "http")))
-        (silent (tag "://"))
-        #user
+        (nameSingleResult "scheme" (takeUntil1C ":"))
+        # authority
+        (silent (tag "//"))
+        # userinfo
         (opt (
-          nameSingleResult "user" (
-            seq (takeWhileNoneOf [
-              "@"
-              ":"
-            ]) (silent (alt (tag "@") (tag ":")))
+          nameSingleResult "userinfo" (
+            mergeResults (seqAll [
+              (nameSingleResult "username" (takeWhileNoneOf [
+                "@"
+                ":"
+              ]))
+              (opt (nameSingleResult "password" (seq (silent (tag ":")) (takeUntil "@"))))
+              (silent (tag "@"))
+            ])
           )
         ))
-        (opt (
-          nameSingleResult "password" (
-            seq (takeWhileNoneOf [
-              "@"
-              ":"
-              "."
-            ]) (silent (tag "@"))
-          )
-        ))
-        (pmap (x: [ { segments = x; } ]) (
-          separated1 (takeWhileNoneOf [
-            "."
-            ":"
-            "/"
-          ]) (silent (tag "."))
-        ))
+        (nameSingleResult "host" (takeWhileNoneOf [
+          ":"
+          "/"
+        ]))
         (opt (
           map1 (x: [ { port = pkgs.lib.toIntBase10 x; } ]) (
             seq (silent (tag ":")) (takeWhile (c: utils.isNumber c))
           )
         ))
-        (opt (nameSingleResult "path" (takeUntil "?")))
+        (opt (
+          nameSingleResult "path" (takeWhileNoneOf [
+            "?"
+            "#"
+          ])
+        ))
         # query params
         (opt (
           nameSingleResult "params" (
@@ -197,7 +196,10 @@ rec {
                     (takeUntil "=")
                     (silent (tag "="))
                     # value
-                    (takeUntil "&")
+                    (takeWhileNoneOf [
+                      "&"
+                      "#"
+                    ])
                     (opt (silent (tag "&")))
                   ])
                 )
@@ -205,6 +207,9 @@ rec {
             )
           )
         ))
+
+        # fragment
+        (opt (nameSingleResult "fragment" (seq (silent (tag "#")) (takeWhile (_: true)))))
       ]) str;
   };
 }

@@ -55,27 +55,26 @@ You can run it like:
 ```console
 $ nix repl -f 'parsnix.nix'
 nix-repl> :p demo.url3
-https://someone:password@subdomain.example.com:80/a/b?k1=v1&k2=v2
+https://someone:password@subdomain.example.com:80/a/b?k1=v1&k2=v2#fragment
 
 nix-repl> :p demo.parseUrl demo.url3
 {
   remaining = "";
   results = [
     {
+      fragment = "fragment";
+      host = "subdomain.example.com";
       params = {
         k1 = "v1";
         k2 = "v2";
       };
-      password = "password";
       path = "/a/b";
       port = 80;
-      protocol = "https";
-      segments = [
-        "subdomain"
-        "example"
-        "com"
-      ];
-      user = "someone";
+      scheme = "https";
+      userinfo = {
+        password = "password";
+        username = "someone";
+      };
     }
   ];
 }
