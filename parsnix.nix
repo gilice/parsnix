@@ -50,15 +50,23 @@ rec {
         decision = if nextchar == "" then false else decidefun nextchar;
       in
       if !decision then index else lookaheadWhile decidefun (index + 1) str;
-
-    takeWhileMin =
-      min: decidefun: str:
+    # like lookaheadWhile, but passes the index to the decidefun
+    lookaheadWhileCnt =
+      decidefun: index: str:
       let
-        matchLen = lookaheadWhile decidefun 0 str;
+        nextchar = utils.charAt str index;
+        decision = if nextchar == "" then false else decidefun nextchar index;
+      in
+      if !decision then index else lookaheadWhileCnt decidefun (index + 1) str;
+
+    takeWhileInternal =
+      min: lookaheadfun: decidefun: str:
+      let
+        matchLen = lookaheadfun decidefun 0 str;
       in
       if matchLen < min then
         {
-          error = "takeWhile: match len ${matchLen} < minimum ${min}";
+          error = "takeWhile: match len ${toString matchLen} < minimum ${toString min}";
           remaining = str;
         }
       else
@@ -66,14 +74,34 @@ rec {
           results = [ (builtins.substring 0 matchLen str) ];
           remaining = utils.substringUntilEnd str matchLen;
         };
-    takeWhile = takeWhileMin 0;
-    takeWhile1 = takeWhileMin 1;
+    takeWhile = takeWhileInternal 0 lookaheadWhile;
+    takeWhile1 = takeWhileInternal 1 lookaheadWhile;
+    # like takeWhile but the decidefun is of format (character: index: true)
+    takeWhileCnt = takeWhileInternal 0 lookaheadWhileCnt;
+    takeWhileCnt1 = takeWhileInternal 1 lookaheadWhileCnt;
+
     takeWhileNoneOf = list: str: takeWhile (c: !builtins.elem c list) str;
     takeWhileNoneOf1 = list: str: takeWhile1 (c: !builtins.elem c list) str;
     takeUntil = char: str: takeWhile (c1: c1 != char) str;
     takeUntil1 = char: str: takeWhile1 (c1: c1 != char) str;
     # like takeUntil, but consumes the character itself too as a silent
     takeUntil1C = char: str: seq (takeUntil1 char) (silent (tag char)) str;
+    takeN =
+      n: str:
+      let
+        substring = (builtins.substring 0 n str);
+      in
+      if substring == "" && n != 0 then
+        {
+          error = "takeN: no more data but n == ${toString n}";
+          remaining = str;
+        }
+      else
+        {
+          results = [ substring ];
+          remaining = utils.substringUntilEnd str n;
+        };
+
     seq =
       a: b: str:
       utils.mapIfOk (a str) (
@@ -91,7 +119,7 @@ rec {
         aRes = a str;
       in
       if aRes ? results then aRes else (b str);
-    altAll = xs: str: pkgs.lib.foldl (a: b: alt a b) (builtins.head xs) (builtins.tail xs) str;
+    altAll = xs: str: pkgs.lib.foldl' (a: b: alt a b) (builtins.head xs) (builtins.tail xs) str;
 
     _manyInternal =
       results: a: str:
@@ -106,6 +134,21 @@ rec {
           remaining = str;
         };
     many = a: str: _manyInternal [ ] a str;
+    _countInternal =
+      results: n: max: a: str:
+      let
+        aRes = a str;
+      in
+      if n == max then
+        {
+          results = results;
+          remaining = str;
+        }
+      else
+        _countInternal (results ++ aRes.results) (n + 1) max a aRes.remaining;
+    count =
+      n: a: str:
+      _countInternal [ ] 0 n str;
 
     when =
       a: goodfn: errfn: str:
